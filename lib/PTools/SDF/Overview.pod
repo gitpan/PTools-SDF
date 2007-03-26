@@ -1,0 +1,1384 @@
+=head1 NAME
+
+PTools::SDF Overview - An overview of the PTools::SDF API
+
+=head1 VERSION
+
+This document is not specific to any version of the SDF modules.
+
+=head1 DESCRIPTION
+
+This document describes the class hierarchy used to implement the
+'SDF DB' abstraction layer. This discussion covers most, but not 
+all, of the modules in the suite of SDF (Simple Data File) classes.
+
+The classes used to define this simple 'DBMS' are based on a suite of
+'Simple Data File' (SDF) classes that have evolved over several years
+to provide an object interface to several common types of data files. 
+
+The format used here is a flat ascii file consting of records containing 
+fields delimited by an arbitrary character (usually a colon ':').
+
+The classes described below provide access to the data structure(s)
+defined using a simple 'schema' format, and provide a layer allowing
+for consistency checks and data entry edits across 'data sets.'
+
+The 'data set' relationships are defined in the 'schema' format.
+This schema is simply a Perl data structure consisting of multiple 
+nested hash and array references.
+
+The class hierarchy may appear complex at first, but each layer builds
+logically upon the prior layers to provide the necessary methods to
+access data. Simple projects can get by with simple functionality and,
+as project complexity increases, greater functionality is available.
+
+=head1 Class Hierarchy
+
+Following is an overview of each class, in hierarchy order.
+Given that there are quite a few modules to become familiar with
+(at least in passing) before undertaking any project development 
+that uses these modules, it may seem a daunting task. 
+
+Not to worry! The following descriptions should make life easier. 
+To start with, the modules in the SDF DB system include the following.
+
+ PTools::SDF::File            - an "abstract" base class, not used directly
+ PTools::SDF::SDF             - base for "character delimited file" classes
+ PTools::SDF::IDX             - allows for user-defined indices
+ PTools::SDF::ARRAY           - allows loading data from a memory array
+
+ PTools::SDF::Sort::Bubble    - slow but very flexible sorter
+ PTools::SDF::Sort::Shell     - pretty fast, fairly flexible
+ PTools::SDF::Sort::Random    - extra fast, for special cases
+ PTools::SDF::Sort::Quick     - very fast, not very flexible
+
+ PTools::SDF::Lock::Advisory  - provides an "advisory" lock on a file via flock
+ PTools::SDF::Lock::Selective - provides an "advisory" lock on a file via fcntl
+
+ PTools::SDF::DB              - an "abstract base class," not used directly
+ PTools::SDF::DSET            - used to manipulate the "data set" files
+ PTools::SDF::DBPolicy        - used to apply "policy" edits from the schema
+
+ PTools::SDF::DBUtil          - a utility to query/add/update/load an SDF DB,
+                                and example of using each of the above modules
+
+ PTools::SDF::ApplicationDB   - e.g.: schema definition for specific application
+ PTools::SDF::DBClient        - a generic client for local/remote SDF DB access
+ PTools::SDF::RPC::DBClient   - a generic client to enable remote SDF DB access
+ PTools::SDF::RPC::DBServer   - a generic server to enable remote SDF DB access
+
+Below are descriptions of the methods available when using these modules. 
+
+In addition, there are several PerlTools utility modules used by some
+of the above classes. No discussion is included for these utility classes,
+but the documentation for these modules should be sufficient.
+
+ PTools::Loader       - used to demand load Perl modules at run-time
+ PTools::String       - miscellaneous string functions, including "prompt"
+ PTools::WordWrap     - reformat arbitrary blocks of text
+
+(Contained in the 'PTools' distribution available on CPAN.)
+
+=head2 PTools::SDF::File
+
+The B<PTools::SDF::File> module is the base class for all of the 'PTools::SDF::*' classes
+that define a data file format. This is an I<abstract> class and, as such, 
+no objects of this class will be created directly. This class is
+expected to be used indirectly through the following classes.
+
+See L<PTools::SDF::File>.
+
+Note that, in some cases, the PTools::SDF:: classes do violate the Liskov 
+Substitution Principle, which states that any subclass should be
+I<indistinguishable> from any parent class. Several methods expect 
+different parameters depending on the subclass: B<param>, B<sort> 
+and B<dump>.  However, since we are only discussing PTools::SDF::SDF type 
+objects in this document, the only method that may change is the 
+B<sort> method, as noted below.
+
+=head3 Abstract methods must be implemented in subclasses.
+
+The implementation of these varies since the structure
+of the various data files are so different. However, the
+user interface remains as consistent as possible.
+
+ new        { ABSTRACT METHOD @_ }
+ save       { ABSTRACT METHOD @_ }
+ param      { ABSTRACT METHOD @_ }
+ delete     { ABSTRACT METHOD @_ }
+ ctrl       { ABSTRACT METHOD @_ }
+ ctrlDelete { ABSTRACT METHOD @_ }
+ sort       { ABSTRACT METHOD @_ }
+ dump       { ABSTRACT METHOD @_ }
+
+
+=head3 Lock/Unlock any PTools::SDF::File object 
+
+These methods lock the data file associated with a given instance
+of an PTools::SDF::File object.
+
+ $sdfObj->lock;
+
+ $sdfObj->unlock;              # or simply exit the script
+
+
+ if ($sdfObj->lock) {
+     print "Okay ... file is locked.\n";
+ } else {
+     die "Nope ... could not lock file.\n";
+ }
+
+=head3 User Extendible Object Methods
+
+In the subclasses discussed below, based on the B<SPTools::DF::SDF> type 
+(or 'file format'), both the B<lock> and B<sort> methods are 
+'user extendible.' This means that the programmer using these
+modules decides which module (class) will be used to perform 
+the lock or sort.
+
+Note that, based on which class is specified, the calling
+parameters may vary. See notes below and in the modules.
+Also note that the syntax below using braces ("[]") is the
+actual syntax used to pass an array reference to the extend
+method, and not an indication of optional parameters.
+
+ $sdfObj->extend( [ "lock", "unlock" ], "SDF::Lock::Advisory"  );
+ $sdfObj->extend( [ "lock", "unlock" ], "SDF::Lock::Selective" );
+
+ if ($sdfObj->isLocked)          ...
+ if ($sdfObj->notLocked)         ...
+
+ if ($sdfObj->extended("lock"))  ...
+
+ $sdfObj->unextend("lock");
+
+Currently there is an 'advisory lock' and a 'selective lock'
+module. Other modules under construction include a 'hard lock' 
+(using an additional empty file as a semaphore) and a 'time 
+lock' that will detect changes to data in situations where it 
+is not appropriate/possible to retain a lock (e.g., updates via
+a Web form).
+
+Extending the B<sort> method is accomplished in a similar manner.
+
+ $sdfObj->extend( "sort", "SDF::Sort::Bubble");   # slow/flexible
+ $sdfObj->extend( "sort", "SDF::Sort::Shell" );   # medium/medium
+ $sdfObj->extend( "sort", "SDF::Sort::Random");   # vfast/special case
+ $sdfObj->extend( "sort", "SDF::Sort::Quick" );   # fast/inflexible
+
+
+=head3 Miscellaneous Utility Methods
+
+Because the B<PTools::SDF::SDF> file format uses an ascii character
+as a field delimiter, allowing users to enter any arbitrary
+text, either through a command-line prompt or a Web form,
+can be dangerous. If the user happens to enter the character
+used as a delimiter the record will become 'corrupt' (i.e., an
+'extra' field will then exist in the record).
+
+To avoid this situation use the following methods to B<escape>
+and B<unescape> any delimiter characters if they happen to exist
+in the field data. (E.g., ':' becomes '%3A' when escaped.)
+
+Note that for PTools::SDF::SDF files containing many records each with
+many fields, the extra overhead for this can become excessive.
+In the PTools::SDF::DSET module, described below, this functionality is
+DISABLED and, therefore, 'schema' edits MUST disallow entry of
+the delimiter character. More on this below.
+
+ $safeValue         = $sdfObj->escapeIFS( $questionableValue );
+
+ $questionableValue = $sdfObj->unescapeIFS( $safeValue );
+
+
+The PTools::SDF:: modules were originally designed to simplify the design
+and creation of Web forms. The following methods help with this.
+(These are copied directly from the CGI.pm module by L. Stein.)
+
+ $encodedURL   = $sdfObj->escape( $URL );
+
+ $unencodedURL = $sdfObj->unescape( $URL );
+
+
+If a log file is used, this method will help.
+
+ $sdfObj->writeLogFile( "message text", $logFilePath );
+
+
+=head2 PTools::SDF::SDF
+
+This module provides methods to manipulate the basic 'character
+delimited' record structure for any arbitrary file in this format.
+The module name comes from 'Simple Data File', 'Self Defining File'
+as each field within a given record can be given an arbitrary name.
+
+The field naming can occur through a special header comment that
+is stored within a data file (i.e., a 'self defining file') and/or
+may be assigned/reassigned through method calls on a file object.
+
+This provides great flexibility when developing applications as
+scripts are no longer dependent upon the relative position of a
+field within a data record. Fields can be added/moved/removed
+without requiring much change to the scripts that use this class.
+
+See L<PTools::SDF::SDF>.
+
+=head3 Loading a character delimited file
+
+ use PTools::SDF::SDF;
+
+ $sdfObj = new PTools::SDF::SDF;
+ $sdfObj = new PTools::SDF::SDF( $fileName );
+ $sdfObj = new PTools::SDF::SDF( $fileName, $mode, $IFS, @fieldNames );
+
+
+=head3 Saving a file to disk
+
+ ($stat,$err) = $sdfObj->save;
+
+ $sdfObj->save;
+ ($stat,$err) = $sdfObj->status;
+
+
+=head3 Saving a file to disk with a different fileName
+
+ ($stat,$err) = $sdfObj->save( undef, $newFileName );
+
+ $sdfObj->ctrl('fileName', $newFileName );
+ ($stat,$err) = $sdfObj->save;
+
+
+=head3 Determining record counts
+
+ $recCount = $sdfObj->count;       # 1-based record count
+ $recCount = $sdfObj->param;       # 0-based record count
+
+
+=head3 Determining file state information
+
+ if $sdfObj->isSortable  ...       # object must contain at least
+ if $sdfObj->notSortable ...       #  two records to be "sortable"
+
+ if $sdfObj->hasData     ...
+ if $sdfObj->notEmpty    ...
+
+ if $sdfObj->noData      ...
+ if $sdfObj->isEmpty     ...
+
+ ($stat,$err) = $sdfObj->status;
+ ($stat,$err) = $sdfObj->getError;
+ ($stat,$err) = $sdfObj->getErr;
+
+ $stat        = $sdfObj->stat;
+ $stat        = $sdfObj->statOnly;
+
+ $err         = $sdfObj->err;
+ $err         = $sdfObj->errOnly;
+
+
+=head3 Setting and retrieving CONTROL parameters
+
+ $sdfObj->ctrl( "ParamName", "Some Value" );
+
+ $ctrlValue = $sdfObj->ctrl( "ParamName" );
+
+
+=head3 Deleting CONTROL parameters
+
+ $sdfObj->ctrlDelete( $paramName );
+
+
+=head3 Setting and retrieving FIELDS within a record
+
+ $sdfObj->param( $recordNumber, "FieldName", "Some Value" );
+ $sdfObj->set( $recordNumber, "FieldName", "Some Value" );
+
+ $fieldValue = $sdfObj->param( $recordNumber, "FieldName" );
+ $fieldValue = $sdfObj->get( $recordNumber, "FieldName" );
+
+
+=head3 Deleting FIELDS within a record 
+
+The following examples are equivalent.
+
+ $sdfObj->fieldDelete( $recordNumber, "FieldName" );
+ $sdfObj->reset( $recordNumber, "FieldName" );
+ $sdfObj->unset( $recordNumber, "FieldName" );
+
+
+=head3 Setting and retrieving RECORDS in the file
+
+ $hashRef = $sdfObj->getRecEntry( $recordNumber );
+ $hashRef = $sdfObj->recEntry( $recordNumber );
+
+ $sdfObj->param( $recordNumber, $hashRef );
+
+In the last example, above, the B<param> method will I<replace>
+the entire record at the specified $recordNumber.  Note that 
+B<no checking> is done on the integrity of the data in the hash.
+It is up to the programmer to ensure that the hash ref contains
+the desired key and data values.
+
+
+=head3 Deleting RECORDS in the file
+
+ $sdfObj->delete( $recordNumber );
+ $sdfObj->delete( $recordNumber, $numberOfRecords );
+
+ @deletedData = $sdfObj->delete( $recordNumber, $numberOfRecords );
+
+
+=head3 Sorting RECORDS in the file
+
+ ($stat,$err) = $sdfObj->sort( @sortParams );
+
+ $sdfObj->sort( @sortParams );
+ ($stat,$err) = $sdfObj->status;
+
+Note that sort method parameters may vary depending on the sort
+class that happens to be loaded at the time. See the 
+L<sort classes|Sort Utilities via User Extendible Method>
+definitions, below, for examples.
+
+=head3 Dumping object contents during testing/debugging
+
+ print $sdfObj->dump;           # entire object -- can get long!
+ print $sdfObj->dump(0, -1);    # only "header" (control) fields
+ print $sdfObj->dump(2, 1);     # start at rec 2 and dump 1 rec
+
+
+=head2 PTools::SDF::IDX
+
+This class allows for user defined indices within B<PTools::SDF::SDF> objects.
+
+See L<PTools::SDF::IDX>.
+
+=head3 Creating user-defined indices in PTools::SDF::SDF objects
+
+ $sdfObj->indexInit( "IndexFieldName" );
+
+ $sdfObj->compoundInit( "IdxField1&IdxField2" );
+
+
+=head3 Accessing data using indices defined in PTools::SDF::SDF objects
+
+The B<index> method acts like the B<param> method but uses
+a 'compound' value (or index) as a 'record number' and
+can be used to both retrieve and set field values.
+
+ $otherFieldValue = $sdfObj->index( "IdxName","IdxValue", "OtherFieldName" );
+
+ $sdfObj->index( "IdxName","IdxValue", "OtherFieldName",  "NEW VALUE" );
+
+If the above gets a bit too confusing, here are some other
+alternatives. Creating an 'index array' may make it easier
+to use the B<index> method like the B<param> method.
+
+ @idx = ("IdxName", $idxValue);
+
+ $otherFieldValue = $sdfObj->index( @idx, "OtherFieldName" );
+
+ $sdfObj->index( @idx, "OtherFieldName",  "NEW VALUE" );
+
+If this still is not what you want, there are methods to
+get a record number for use with the B<param> method, or
+to simply fetch a 'hash reference' to the record. Note
+that updates to '$hashRef' data will update the record in
+memory, but is only written to disk via the B<save> method.
+
+ $recNumber = $sdfObj->recNumber( "IdxName","IdxValue" );
+
+ $hashRef = $sdfObj->recData( "IdxName","IdxValue" );
+
+
+=head3 Additional index related methods
+
+ $idxCount = $sdfObj->indexCount( "IdxFieldName" );
+
+ $hashRef = $sdfObj->getIndex( "IdxFieldName" );
+
+ $sdfObj->indexDelete( "IdxFieldName" );
+
+ $sdfObj->sort( @sortParams );
+
+Note that the B<sort> method is overridden in the B<PTools::SDF::IDX>
+module. Sorting 'invalidates' defined indices as it obviously
+reorders the data file records. Any index must be reinitialized.
+
+
+=head2 PTools::SDF::ARRAY
+
+This module allows for loading data from an array variable instead of
+reading from a data file.
+
+See L<PTools::SDF::ARRAY>.
+
+=head3 Loading PTools::SDF::SDF type data from an array
+
+This might seem a strange example, but it demonstrates the usage.
+
+ open(IN,"&lt;/etc/passwd") or die $!;
+ (@array) = &lt;IN&gt;;
+ close(IN);
+
+ $fieldNames = "uname:passwd:uid:gid:gcos:dir:shell";
+
+ $sdfObj = new PTools::SDF::ARRAY( \@array, undef, undef, $fieldNames );
+
+
+=head1 Utility Modules
+
+There are two types of additional SDF modules that exist outside of 
+this class hierarchy: 'sorting' and 'locking.' These are intentionally
+not included within the PTools::SDF::* modules for several reasons:
+
+  o  they provide functionality that is not always needed
+
+  o  they may be used by different "types" of PTools::SDF::* classes
+     (we are only discussing "SDF::SDF type" objects here)
+
+  o  they are implemented as 'user extendible' as explained next;
+     a programmer has the ability to choose which module to use
+     at run time, and can alter the selection at any time
+
+The utility modules are implemented as 'user extendible' methods.
+In the subclasses discussed below, based on the B<PTools::SDF::SDF> 'type' 
+(or 'file format'), both the 'lock' and 'sort' methods are 
+'user extendible.' This means that the programmer using these
+modules decides which module (class) will be used to perform 
+the lock or sort at run time (and even has the ability to replace
+them completely with modules of their own design)
+
+Note that, based on which class is specified, the calling
+parameters may vary. See notes below and in the modules.
+Also note that the syntax below using braces ("[]") is the
+actual syntax used to pass an array reference to the extend
+method, and not an indication of optional parameters.
+
+=head2 Sort Utilities via User Extendible Method
+
+Currently only B<PTools::SDF::SDF> type objects can be sorted (this includes
+any object that inherits from the B<PTools::SDF::SDF> base class, including
+most of the modules described in this document. Three different sort 
+modules are provided with the basic SDF package. The tradeoffs in
+deciding which one to use include functionality vs. speed.
+
+See the 'L<User Extendible Object Methods|User Extendible Object Methods>'
+section, above, for the syntax used to 'extend' an object method, which
+is to say 'select the class' that will implement the method.
+
+
+=head2 PTools::SDF::Sort::Bubble
+
+This is the default sorting module used when invoking the
+'sort' method on any 'PTools::SDF::SDF type' object. This provides
+the greatest flexibility and the slowest speed. The sort
+can specify multiple sort fields, case insensitivity and
+'forward' or 'reverse' sorting. However, as the number of
+records exceeds about 100 the speed becomes increasingly
+slower. Sorting over about 1,000 records may be too slow
+for a given application to be considered useful.
+
+See L<PTools::SDF::Sort::Bubble>.
+
+
+=head2 PTools::SDF::Sort::Shell
+
+This is a faster alternative to the Bubble Sort algorithm,
+but only one sort key may be used. 'Reverse' and 'case
+insensitive' sorting may still be specified.
+
+See L<PTools::SDF::Sort::Shell>.
+
+
+=head2 PTools::SDF::Sort::Quick
+
+This is one of the fastest sorters included with these tools.
+However, only one sort key may be specified. No other options
+are currently available with this sorter. However, a sort of
+over 10,000 records may cause little or no noticable delay.
+
+See L<PTools::SDF::Sort::Quick>.
+
+
+=head2 PTools::SDF::Sort::Random
+
+This by far the fastest sort mechanism. With this sorter,
+no keys or options are necessary. When using this class a
+sort of around 100,000 records will cause only a brief delay.
+
+See L<PTools::SDF::Sort::Random>.
+
+
+=head3 Sorting PTools::SDF::SDF objects
+
+As mentioned above, the 'sort' method is 'user extendible' meaning
+that the programmer using these modules decides which sort module
+(class) will be used to sort data. Note well that the calling params
+change depending on which sort module is in effect!
+
+ $sdfObj->sort( $mode, @sortFieldNames );  # Bubble (multiple keys)
+
+ $sdfObj->sort( $mode, $sortFieldName );   # Quick  (only one key)
+
+ $sdfObj->sort( undef, undef );            # Random (no args needed)
+
+ $sdfObj->sort( undef, $sortFieldName );   # Quick  (no mode/one key)
+
+
+The B<$mode> parameter, when allowed, can be any of the following.
+
+ $mode = "reverse"
+ $mode = "ignorecase"
+ $mode = "reverse:ignorecase"
+
+Notes: The sort modules ONLY work with B<PTools::SDF::SDF> type objects,
+and the B<PTools::SDF::Sort::Bubble> module is the default sorter.
+This default is defined in the B<PTools::SDF::SDF> module.
+
+=head2 Lock Utilities via User Extendible Method
+
+Currently any 'PTools::SDF::*' object can be locked (this includes any
+object that inherits from the B<PTools::SDF::File> 'base class,' including
+the 'PTools::SDF::SDF type' under discussion here, the B<PTools::SDF::INI> 
+type (Windoze .INI format) and the B<PTools::SDF::TAG> type (a type of 
+tagged data file format).
+
+In addition, these modules may be used outside of the
+SDF:: classes by any script to obtain an advisory
+lock on any arbitrary file on the system.
+
+See the 'L<User Extendible Object Methods|User Extendible Object Methods>'
+section, above, for the syntax used to 'extend' an object method, which
+is to say 'select the class' that will implement the method.
+
+=head2 PTools::SDF::Lock::Advisory
+
+This provides simple 'advisory' (file system semaphore)
+locking via B<flock>. Any and all scripts that 'lock' a
+given file must agree to honor an existing 'lock.'
+
+See L<PTools::SDF::Lock::Advisory>.
+
+=head2 PTools::SDF::Lock::Selective
+
+This provides simple 'advisory' (file system semaphore)
+locking via B<fcntl>. Any and all scripts that 'lock' a
+given file must agree to honor an existing 'lock.'
+
+See L<PTools::SDF::Lock::Selective>.
+
+=head3 Locking and unlocking an SDF data file
+
+These calls invoke methods defined in the PTools::SDF::File module.
+
+ if $sdfObj->lock         ...
+ if $sdfObj->advisoryLock ...
+
+ $sdfObj->unlock;
+ $sdfObj->advisoryUnlock;
+
+Note that if the '$sdfObj' is ever destroyed (undefined or
+falls out of 'scope') before the script exits, any lock will
+be released. And, whenever the script exits, any lock will 
+also be released.
+
+=head3 Determining lock state information
+
+ if $sdfObj->isLocked    ... 
+ if $sdfObj->notLocked   ... 
+
+
+This lock class is designed to work with any PTools::SDF::*
+type of object. Also, this class will work as a general utility
+for locking any simple data file from within any script. For
+use as a 'lock manager' when not using the 'PTools::SDF::*' modules,
+see additional examples in L<SDF/Lock/Advisory.pm>.
+
+
+=head2 Custom Utility Extensions
+
+As mentioned above, any programmer may design their own sort and/or
+lock modules to be used with the 'PTools::SDF::*' classes. There is not 
+yet much documentation for the criteria necessary to accomplish this.
+However, comments exist in the following classes that explain it:
+SDF::File, PTools::SDF::SDF, and each of the sort and lock modules.
+
+Also, there is a PerlTools (PTools) utility module named B<Extender> 
+that abstracts this functionality for general use when developing Perl 
+modules outside of the PTools::SDF:: suite of classes.
+
+See L<Extender>.
+
+
+=head1 Data Base Layer
+
+Next, on top of the classes listed above, is a 'data base abstraction
+layer' that provides a mechanism to relate several 'simple data files'
+into 'data sets' within a simplistic 'data base.' A 'schema language'
+provides the relationships for checks-and-balances during data entry.
+The schema also serves as a configuration file for defining data entry 
+edits, edit error messages, 'friendly labels' for field names, etc.
+
+The B<PTools::SDF::DB> and B<PTools::SDF::DSET> classes provide the basis 
+for the simple 'data base management system' used here. The 
+B<PTools::SDF::DBPolicy> class adds a layer of policy edits. It is this 
+policy mechanism that turns separate ascii data files into 'data sets' 
+within this simple 'data base.'
+
+Many methods are provided to give access to the schema structure. With
+increased functionality comes increased complexity but, hopefully, not
+to the exclusion of usability.
+
+
+=head2 PTools::SDF::DB, The Schema Definition
+
+The B<PTools::SDF::DB> module is the base class for any 'data base schema.'
+This is an I<abstract> class and, as such, no objects of this class 
+will be created directly. This class is expected to be used within
+a 'schema' class that acts as the definition for any SDF 'data base.'
+
+See L<PTools::SDF::DB>.
+
+The following discussion covers the syntax of the schema 
+definition. See additional notes, below, for the existing methods 
+available to parse the 'schema' definition. 
+
+A good overview of the various schema components is available in
+the man page for this module.
+
+As noted above, an optimization is used in the PTools::SDF::DSET module
+that disables checking for 'IFS' characters used to separate the
+fields within a data record. Refer to edits defined in the 'schema'
+for examples of ENSURING that a user does not enter the character
+used for field separation.
+
+The following discussion covers the existing methods available in
+the B<PTools::SDF::DB> class to parse the 'schema' definition. 
+
+ use lib "/opt/tools/global/lib";
+ use PTools::SDF::DemoDB;
+
+ $DB = new PTools::SDF::DemoDB;
+
+
+=head3 Obtaining Information About the Data Base
+
+ $fileName     = $DB->dataBaseFile;
+ $dataBaseType = $DB->serverType;        # returns "local" or "remote"
+
+ $dataBaseName = $DB->dataBaseName;      # these three are equiv:
+ $dataBaseName = $DB->dbaseName;
+ $dataBaseName = $DB->baseName;
+
+ @dataSetNames = $DB->dataSetNames;      # these four are equiv:
+ @dataSetNames = $DB->dataSetList;
+ @dataSetNames = $DB->dsetList;
+ @dataSetNames = $DB->dsetNames;
+
+
+=head3 Using a Data Base Object to 'Open' a Data Set File
+
+In this 'simple DBMS' all it means to 'open' a data set is
+to copy the data into memory. B<Any changes to data will NOT
+be recorded unless the 'save' method is used prior to exit>.
+
+All of the following methods are equivalent.
+
+ $dataSetObj = $DB->openDataSet( $dataSetNameOrAlias );
+ $dataSetObj = $DB->dataSet    ( $dataSetNameOrAlias );
+ $dataSetObj = $DB->dataset    ( $dataSetNameOrAlias );
+ $dataSetObj = $DB->dset       ( $dataSetNameOrAlias );
+ $dataSetObj = $DB->datafile   ( $dataSetNameOrAlias );
+ $dataSetObj = $DB->dataFile   ( $dataSetNameOrAlias );
+
+A 'data set' (file) may have one or more 'alias name' assciated
+with it in the 'schema definition.' If so, the alias may be used
+with any of the methods where '$dataSetNameOrAlias' is specified.
+
+B<Note:> Once a particular data set has been 'opened' any subsequent
+calls to the 'dset' method using the data set's name (or alias) will
+return the same 'open' data set object that was originally created.
+
+
+=head3 Using a Data Base Object to Obtain Data Set Information
+
+ @setNames = $DB->primarySetList;         # "official" data set list
+
+ @setNames  = $DB->dataSetAliases;        # a list of defined data 
+ @setNames  = $DB->dsetAliases;           #  set aliases, if any
+
+ @setNames  = $DB->fullAliasList;         # both "official" and aliases
+
+
+ $fileName  = $DB->dataSetFile( "DataSetNameOrAlias" );
+ $fileName  = $DB->dsetFile   ( "DataSetNameOrAlias" );
+
+ $title     = $DB->dataSetTitle( "DataSetNameOrAlias" );
+ $title     = $DB->dsetTitle   ( "DataSetNameOrAlias" );
+
+ @keyNames  = $DB->dataSetKeys( "DataSetNameOrAlias" );
+ @keyNames  = $DB->dsetKeys   ( "DataSetNameOrAlias" );
+
+ @fieldList = $DB->dataSetFields( $dataSetNameOrAlias );
+ @fieldList = $DB->dsetFields   ( $dataSetNameOrAlias );
+
+ $hashRef   = $DB->dataSetSchema( "DataSetNameOrAlias" );
+
+ $hashRef   = $DB->getEditPolicy( $dataSetNameOrAlias );
+
+ $dsetName  = $DB->dataSetName( $dataSetNameOrAlias );
+ $dsetName  = $DB->dsetName   ( $dataSetNameOrAlias );
+
+
+=head3 Using a Data Base Object to Obtain Data Set Field Information
+
+ $fieldText = $DB->fieldPrompt( $dataSetNameOrAlias, $fieldName );
+ $fieldText = $DB->fieldText  ( $dataSetNameOrAlias, $fieldName );
+
+ $fieldEdit = $DB->fieldEdit  ( $dataSetNameOrAlias, $fieldName );
+
+ $fieldHint = $DB->fieldHint  ( $dataSetNameOrAlias, $fieldName );
+
+
+=head3 Locking and Unlocking the file associated with a Data Base Object
+
+These calls invoke methods defined in the PTools::SDF::DB module.
+
+ $DB->lock;
+ $DB->advisoryLock;
+
+ $DB->unlock;
+ $DB->advisoryUnlock;
+
+ if $DB->isLocked  ...
+
+ if $DB->notLocked ...
+
+As currently implemented, this locks the I<entire> data base. It is
+not yet possible to lock at the data set level.
+
+
+=head3 Applying Policy Edits Across Two Data Sets for a Data Field
+
+This is the mechanism that creates 'data sets' out of two ascii files.
+
+ ($stat,$err,$srcRef) =
+     $DB->applyEditPolicy( $mode, $dsetName, $fieldName, $value, $policyRef );
+
+ Input:   $mode       is one of "add" or "update"
+	  $dsetName   is a "data set name" or "data set alias"
+	  $fieldName  is a valid field in the "data set"
+	  $value      is the new data value
+	  $policyRef  is optional and not generally used
+
+ Result:  $stat       is resulting numeric status
+	  $err        is resulting error text, when status not zero
+	  $srcRef     is an optional hash ref containing data collected
+			 via an external Perl class that returns a hash
+			 used for default values in data input prompts
+			 while adding/updating/loading a data file.
+
+This is only part of the story. See the
+L<Applying Input Edits For a Single Data Field|Applying Input Edits For 
+a Single Data Field> section, below, for the way to apply simple data 
+entry edits to data fields.
+
+=head3 Miscellaneous methods of a Data Base Object
+
+ $hashRef      = $DB->dataBaseSchema;
+
+ $schemaVersion= $DB->schemaVersion;
+
+ ($stat,$err)  = $DB->status;
+
+ print $DB->dump;
+
+ $input = $DB->promptUser( @promptArgs );
+ $input = $DB->prompt    ( @promptArgs );
+
+For usage of the B<prompt> method and discussion of the arguments,
+see the method of the same name in L<String>.
+
+=head2 PTools::SDF::DSET
+
+This class is used to manipulate each of the 'data sets' within
+the 'data base.' This class provides access to all of the methods
+in all of the above mentioned PTools::SDF::* modules (except for 
+B<PTools::SDF::DB>, which is an abstract base class).
+
+See I<PTools::SDF::DSET> (no man page yet).
+
+The PTools::SDF::DSET class, unlike the PTools::SDF::DB class, is NOT an 
+'abstract class.' However, this class is also B<not intended> to be 
+used/called directly by a Perl script.
+
+Use the 'dset' method on an existing '$DB' object (an instance of
+the 'PTools::SDF::DB' class) to 'open' a 'data set' in the 'data base.'
+
+Note that, in this simple DBMS, 'opening' a data set simply means
+that the file data is copied into memory. B<Any updates made to the
+data are NOT retained unless the 'save' method is used to write 
+the file back to disk prior to exiting.>
+
+
+ $dsetObj = $DB->dset( "DataSetNameOrAlias" );
+
+
+B<Note:> Once a particular data set has been 'opened' any subsequent
+calls to the 'dset' method using the data set's name (or alias) will
+return the same 'open' data set object that was originally created.
+
+
+=head3 Using a Data Set Object to Obtain Data Base Information
+
+ $baseName  = $dsetObj->dataBaseName;
+
+ @setNames  = $dsetObj->dataSetNames;
+
+
+=head3 Obtaining Information About the Data Set
+
+ $hashRef    = $dsetObj->dataSetSchema;
+
+ $fileName   = $dsetObj->dataSetFile;
+ $fileName   = $dsetObj->dsetFile;
+
+ $filePath   = $dsetObj->dataSetPath;
+ $filePath   = $dsetObj->dsetPath;
+
+ $dsetTitle  = $dsetObj->dataSetTitle;
+ $dsetTitle  = $dsetObj->dsetTitle;
+ $dsetTitle  = $dsetObj->dsetName;
+
+ @keyNames   = $dsetObj->dataSetKeys;
+ @keyNames   = $dsetObj->dsetKeys;
+ @keyNames   = $dsetObj->keyFields;
+ @keyNames   = $dsetObj->keyNames;
+
+ @fieldNames = $dsetObj->dataSetFields;
+ @fieldNames = $dsetObj->dsetFields;
+ @fieldNames = $dsetObj->fieldNames;
+
+ @aliasNames = $dsetObj->dataSetAliases;
+ @aliasNames = $dsetObj->dsetAliases;
+
+
+Before accessing a user-defined index the index must be 'initialized.'
+To determine if an index already exists for a given key field the
+following methods are available.
+
+ @primaryKeys= $dsetObj->primaryKeys;
+
+ @activeKeys = $dsetObj->activeKeys;
+
+ if $dsetObj->activeKey( $keyFieldName )  ...
+
+As currently implemented, any key(s) defined in the schema as
+'primary keys' are initialized during the 'open' call. If no
+keys are so defined, the I<first> field defined in the list
+of 'key' fields is initialized.
+
+=head3 Setting/resetting Active Key Information
+
+ $dsetObj->setActiveKey( $keyFieldName );
+
+ $dsetObj->resetActiveKeys;
+
+
+=head3 Obtaining Data Set Field Information
+
+ ($fieldText,$fieldEdit,$fieldHint) = $dsetObj->fieldPrompt( $fieldName );
+ $fieldText                         = $dsetObj->fieldPrompt( $fieldName );
+
+ $fieldText = $dsetObj->fieldText( $fieldName );
+
+ $fieldEdit = $dsetObj->fieldEdit( $fieldName );
+
+ $fieldHint = $dsetObj->fieldHint( $fieldName );
+
+
+=head3 Applying Input Edits For a Single Data Field
+
+ $input = $dsetObj->promptUser( $fieldText,$fieldEdit,$fieldHint,$default );
+ $input = $dsetObj->prompt    ( $fieldText,$fieldEdit,$fieldHint,$default );
+
+These simple data entry field edits are only part of the story. See the
+'L<Applying Policy Edits Across Two Data Sets for a Data Field|Applying 
+Policy Edits Across Two Data Sets for a Data Field>' section, above,
+for the mechanism that actually creates a 'data base' from two
+separate ascii data files.
+
+The above examples are for prompting users interactivelly. When writing 
+a 'batch load' script, see the B<editLoadValue> method in the 
+B<PTools::SDF::DBUtil> class for an example of applying both simple 
+input edits, and the more complex policy edits.
+
+
+=head3 Miscellaneous methods of a Data Set Object
+
+    $hashRef = $dsetObj->dataBaseSchema;
+
+
+=head2 PTools::SDF::DBPolicy
+
+This module provides access to the 'policy layer' within the
+schema. This is used for checks-and-balances across various
+'data sets' during data entry, and allows using external Perl
+classes to obtain defaults when adding/updating/loading.
+
+See I<PTools::SDF::DBPolicy> (no man page yet).
+
+This is a 'utilty' module not intended for direct use.
+See the
+'L<Applying Policy Edits Across Two Data Sets for a Data Field|Applying 
+Policy Edits Across Two Data Sets for a Data Field>' section, above.
+This is accessed through objects of the B<PTools::SDF::DB> class.
+
+=head2 PTools::SDF::DBUtil
+
+This is intended as the definitive 'how to' example of accessing
+SDF DB files.
+
+See I<PTools::SDF::DBUtil> (no man page yet).
+
+This 'proof of concept' module fully demonstrates how to access
+a 'Simple Data File Data Base' (SDF DB). This module uses many of
+the available methods in the above classes to perform the following
+tasks without 'hard coding' specifics of a particular 'data base'
+definition but only by querying the 'schema.'
+
+ o  query    - prompts user for data set, key field, and field value
+ o  add      - adds data set entries; applies any consistency checks
+ o  update   - updates data entries;  applies any consistency checks
+ o  load     - loads data from file;  applies any consistency checks
+
+'Consistency checks' include both simple data entry edits, complex
+'policy' checks across data sets and invoking external Perl classes
+to fetch input defaults.
+
+Each of these tasks are accomplished entirely through methods that
+query the 'schema' definition for a given 'data base.' This module
+is intended to be the definitive 'how to' example of programatically 
+manipulating any SDF DB.
+
+See an example of calling this module in the following script.
+
+ /opt/tools/global/bin/dbutil.pl
+
+
+
+=head1 Remote SDF Data Base Access
+
+A light weight RPC mechanism is available to allow remote access to
+any SDF DB.
+
+The three modules mentioned in this section, combined with the 'schema' 
+module mentioned above, make it possible to enable an SDF DB for remote
+access. As the examples below will demonstrate, the entire client/server 
+setup can easily be accomplished in about one hundred additional 
+lines of Perl code.
+
+If you are not familiar with creating client/server applications, this
+discussion may not seem very 'simple' at first. However, once you see
+the pieces come together, you will see just how simple this truly is.
+
+The RPC mechanism used here relies on the CPAN modules B<RPC::PlClient> 
+and B<RPC::PlServer> which, in turn, use the B<Net::Daemon> and B<Storable>
+modules to implement a simple but effective RPC interface in Perl.
+
+Make sure you read the L<Warnings|"WARNINGS"> section, below, before you
+start prividing remote access to your data files.
+
+
+=head2 The Components Involved
+
+The first step in creating a client/server application is understanding
+how the pieces fit together.
+
+There is, obviously, a B<client> side and a B<server> side that need to
+communicate with each other so they can work together.
+
+There is a B<local> client module used to access the SDF DB when it
+resides on a local host, and a B<remote> client module that is needed
+when the SDF DB resides on a remote server.
+
+There is also a B<generic> client module that is used when client scripts
+don't care where the data resides. 
+
+A script can use each of the three types of client classes interchangably
+(local, remote and generic) as they all appear to work identically. The 
+client script I<cannot tell any difference> and need not know if the data 
+files are local or remote.
+
+An overview of each of these components follows. After that will be
+some complete examples of how these pieces are created and used.
+
+For notes on security issues, see the 
+'L<Security With SDF DB and RPC|Security With SDF DB and RPC>'
+section, below.
+
+
+=head3 Local Client Classes Provide Access to Local Data Files
+
+To create an SDF DB out of several unrelated ascii data files you created
+a 'schema' definition. This module provides the logical relationships
+between the separate data files.
+
+This SDF DB 'schema' module B<is> the Local Client module that is
+used by a script to access the data files on a local host.
+
+
+=head3 Remote Client Classes Provide Access to Remote Data Files
+
+To access an SDF DB residing on a remote server, you need to create
+a new module to provide a connection to the SDF DB server for a 
+particular 'data base.' 
+
+Using the 'abstract' remote client class provided with the SDF
+modules, a remote client accessor class can be created in about
+twenty lines of Perl code. A complete example is included, below.
+
+
+=head3 Generic Client Classes Provide Local OR Remote Access
+
+At this point your scripts have a choice to make. Should they
+attempt to access the SDF DB on the local host or do they need
+to try for remote access instead?
+
+Using an 'abstract' class provided with the SDF modules as a base,
+a 'generic client' class can be created in less than ten lines of
+Perl code. When client scripts use this class, if a local SDF DB 
+is not available, the client class will automatically attempt to
+connect to the remote DB server.
+
+Client scripts that use the new generic client class to access an
+SDF DB will never know if the data is local or remote. Any scripts
+that already access an SDF DB (via the 'schema module') can now
+use this generic client class and they will continue to work 
+without any further change.
+
+If, for some reason, they do actually care, the client can obtain
+this information as shown in the examples, below.
+
+
+=head3 Server Classes Provide Remote Access to Clients
+
+A client/server setup would not be complete without a server, and
+a complete example of creating a remote access server for your
+existing SDF DB data is included, below.
+
+For notes on security issues, see the 
+'L<Security With SDF DB and RPC|Security With SDF DB and RPC>'
+section, below.
+
+
+=head2 PTools::SDF::RPC::DBClient (To Access Remote SDF DB Data Files)
+
+This is a generic (abstract) client class that facilitates B<remote>
+access to an SDF DB.
+
+See I<PTools::SDF::RPC::DBClient> (no man page yet).
+
+Using this class as a base, it is trivial to create a new subclass to
+provide remote access any existing SDF DB. The following is a I<complete>
+example of creating a 'remote access client' module.
+
+Example:
+
+It will be convenient if you pick a name that is consistent with your
+existing SDF DB 'schema' module. This example assumes that you have 
+already created a 'schema' file named "B<MySimpleDB.pm>".
+
+ package RPC::MySimpleDB;
+ use strict;
+
+ use vars qw( $VERSION @ISA $DBClass $ConfigRef );
+ $VERSION = '0.01';
+ @ISA     = qw( PTools::SDF::RPC::DBClient );
+
+ BEGIN {
+    $DBClass   = "MySimpleDB";        # your 'schema' (local) module
+    $ConfigRef = {
+         'peeraddr'    => 'saturn',   # remote host or IP address
+         'maxmessage'  => 5120000,    # limits data file size to 5MB
+         'peerport'    => 1234,       # whatever port your server uses
+         'version'     => '0.01',
+         'user'        => '',
+         'password'    => '',
+    };
+ }
+ use PTools::SDF::RPC::DBClient ( $DBClass, $ConfigRef );
+ 1;
+
+Note that B<peeraddr> specifies the hostname or IP address of the
+remote host running the SDF DB server. The B<peerport> specifies
+what port number on the remote host provides access to the SDF DB.
+The B<peerport> number here must match the B<localport> number that 
+is configured in the remote access server, as noted below.
+
+Then any existing client scripts can use this new class in place of
+the existing 'schema' module they were using to access the DB files.
+And, other than using a different module to create the "$DB" object,
+nothing else needs to change in the client script.
+
+ #!/opt/perl/bin/perl -w
+ use RPC::MySimpleDB;          # instead of "MySimpleDB", for example
+
+ $DB = new "RPC::MySimpleDB";
+ $dsetObj = $DB->dset( "DataSetNameOrAlias" );
+
+Now, isn't that an example of B<truly simple> RPC? Of course, you
+will also need to create an SDF DB I<server> and start it running.
+The server part is simple, too, and it's explained in full, below.
+
+
+Example 2: Creating a 'singleton' client
+
+ To do: add exmple of "singleton" class.
+
+
+=head2 PTools::SDF::DBClient (To Access Local OR Remote SDF DB Data Files)
+
+This next class is a generic (abstract) client class that facilitates 
+either B<local> or B<remote> access to an SDF DB.
+
+See I<PTools::SDF::DBClient> (no man page yet).
+
+At this point your scripts have a choice to make. Should they
+attempt to access the SDF DB on the local host or do they need
+to try for remote access instead?
+
+Using this 'abstract' class provided with the SDF modules as a base,
+a 'generic client' class can be created in less than ten lines of
+Perl code. When client scripts use this class, if a local SDF DB 
+is not available, the client class will automatically attempt to
+connect to the remote DB server.
+
+Following is a I<complete> example of creating a generic client. 
+
+Example:
+
+As with the above examples, it will be most convenient if you pick a 
+module name that is consistent with your existing SDF DB 'schema' module.
+This example assumes that your original SDF DB 'schema' file is named 
+"B<MySimpleDB.pm>" and your 'remote access' module is named
+"B<RPC::MySimpleDB.pm>".
+
+ package MySimpleDBClient;
+ use strict;
+
+ use vars qw( $VERSION @ISA );
+ $VERSION = '0.01';
+ @ISA     = qw( PTools::SDF::DBClient );
+
+ use PTools::SDF::DBClient qw( MySimpleDB  RPC::MySimpleDB );
+ 1;
+
+Client scripts that use this new generic client class to access an
+SDF DB will never know if the data is local or remote. Any scripts
+that already access a B<local> SDF DB (via the 'schema module')
+or a B<remote> SDF DB (via the 'remote access module')  can now
+use this new generic client class and they will continue to work 
+without any further change.
+
+ #!/opt/perl/bin/perl -w
+ use MySimpleDBClient;          # instead of "MySimpleDB", for example
+
+ $DB = new "MySimpleDBClient";
+ $dsetObj = $DB->dset( "DataSetNameOrAlias" );
+
+If your client scripts, for some reason, actually care whether the 
+data files are local or remote (perhaps you want to display a 
+different message to your users), the client script can call the
+B<serverType> method on a B<$DB> object, as shown here.
+
+ $dbType = $DB->serverType;        # returns "local" or "remote"
+
+What could be simpler? By now you are probably getting curious about
+how the server side setup works. The server part is simple, too, and 
+it's explained in full, in the next section.
+
+
+=head2 PTools::SDF::RPC::DBServer
+
+This is a generic (abstract) B<server class> that facilitates remote
+access to an SDF DB via a simple RPC mechanism.
+
+See I<PTools::SDF::RPC::DBServer> (no man page yet).
+
+This module and the client classes, above, make it simple to provide
+remote access to an SDF DB.
+
+
+Using this 'abstract' class provided with the SDF modules as a base,
+an 'RPC server' class can be created in around fifty lines of Perl code.
+When the server script is running, client scripts that use the corresponding
+'remote access' modules, as explained above, will have access to the SDF DB
+data files.
+
+Following is a I<complete> example of creating an SDF RPC server. 
+
+Example:
+
+As with the above examples, it will be most convenient if you pick a 
+module name that is consistent with your existing SDF DB 'schema' module.
+This example assumes that your original SDF DB 'schema' file is named 
+"B<MySimpleDB.pm>".
+
+ package RPC::MySimpleDBServer;
+ use strict;
+
+ use vars qw( $VERSION @ISA );
+ $VERSION = '0.01';
+ @ISA     = qw( PTools::SDF::RPC::DBServer );    # Defines interitance 
+
+ use Local;
+ use PTools::SDF::RPC::DBServer;         # ISA RPC::PlServer, ISA Net::Daemon
+
+ # The following class is the "real" SDF data base that we will
+ # enable for remote access via the "SDF::RPC::AccountsDB" client.
+ # This class must be specified in the "_config" method, below.
+ #
+ use MySimpleDB;
+
+ my $LocalDB    = "MySimpleDB";     # the "real" DB access class
+ my $WritePerms = 1;                # 0 = disallow write access
+
+ sub run
+ {  my($class,$hashRef) = @_;
+
+    $hashRef ||= $class->_config( $hashRef );
+
+    $class->SUPER::run( $hashRef );
+ }
+
+ sub _config
+ {  my($class) = @_;
+
+    return({
+      'SDF_DB_CLASS'  => $LocalDB,        # the "real data base" class
+      'SDF_DB_WRITE'  => $WritePerms,     # 0 = disallow write access
+
+        'pidfile'     => "/path/to/mysimpledb.pid",
+        'logfile'     => "/path/to/mysimpledb.log",
+        'facility'    => 'daemon',        # Default 'facility'
+        'localport'   => 1234,            # Use same port as clients!
+        'mode'        => 'fork',          # Recommended for Unix
+        'maxmessage'  => 5120000,         # limits data file size to 5MB
+        'clients' => [
+            # Accept connections from "*.cup.hp.com"
+            {
+              'mask' => '\.cup.hp\.com$',
+              'accept' => 1,
+            },
+            # Deny everything else
+            {
+              'mask' => '.*',
+              'accept' => 0,
+            },
+         ],
+    });
+ }
+ 1;
+
+Make sure that the B<localport> number specified here is the same
+as the B<peerport> number that you used in the 'remote access module'
+as shown above. Also note that specifying a port number below 1024
+requires that your server run as root. This is B<not> recommended.
+
+Then, to use this new server module, create a simple script that
+invokes the B<run> method in your new module.
+
+ #!/opt/perl/bin/perl -w
+ use RPC::MySimpleDBServer;
+ run RPC::MySimpleDBServer;
+ exit(0);
+
+That's it. We're done. You have just implemented RPC access to your
+SDF DB, and it only took about one hundred lines of new Perl code to 
+complete.
+
+Just make sure that, when your server script starts running that the
+'local access module' (your original SDF DB 'schema') is available for
+the server to include. Then, when your client scripts run, if the
+'local' module is available, they will access the data files locally.
+If the 'local' module is not available, the 'generic access module'
+will attempt to connect to the remote server via the RPC mechanism.
+
+To disallow B<save> access to your remote SDF DB, simply set the
+B<SDF_DB_WRITE> flag appropriatly. This will also disallow B<lock>,
+and your client scripts should I<always> obtain a successful lock
+prior to calling the B<save> method on a B<$DB> object.
+
+If your client scripts, for some reason, actually care whether the 
+data files are local or remote (perhaps you want to display a 
+different message to your users), the client script can call the
+B<serverType> method on a B<$DB> object, shown in an example above.
+
+
+Of course, no discussion of client/server applications is complete
+without mentioning security issues. These are addressed in the next 
+section, below.
+
+
+=head2 Security With SDF DB and RPC
+
+To do: add some discussion.
+
+
+=head1 WARNINGS
+
+In this 'simple DBMS' all it means to 'open' a data set is
+to copy the data into memory. Any changes to data B<will NOT
+be recorded> unless the B<save> method is used prior to exit.
+See L<PTools::SDF::SDF> for details of the B<save> method.
+
+When using the RPC modules to enable remote access, don't count
+on security for your data files. There is no concept in this
+SDF DBMS of either I<set level> or I<field level> security.
+Access to any part implies access to all parts of a SDF DB.
+
+
+=head1 SEE ALSO
+
+See
+L<PTools::SDF::ARRAY>, L<PTools::SDF::CMD::BDF> L<PTools::SDF::CSV>,
+L<PTools::SDF::DB>,    L<PTools::SDF::DIR>,     L<PTools::SDF::DSET>,
+L<PTools::SDF::File>,  L<PTools::SDF::IDX>,     L<PTools::SDF::INI>,
+L<PTools::SDF::Lock::Advisory>,         L<PTools::SDF::Lock::Selective>,
+L<PTools::SDF::SDF>,
+L<PTools::SDF::Sort::Bubble>, L<PTools::SDF::Sort::Quick>, 
+L<PTools::SDF::Sort::Random>, L<PTools::SDF::Sort::Shell>,
+and L<PTools::SDF::TAG>.
+
+Also see 
+L<PTools::SDF::DBClient>, L<PTools::SDF::RPC::DBClient>, 
+and L<PTools::SDF::RPC::DBServer> for remote access.
+
+Also see
+L<PTools::SDF::File::AutoHome>, L<PTools::SDF::File::AutoView>,
+L<PTools::SDF::File::Mnttab> and L<PTools::SDF::File::Passwd>.
+
+In addition, the B<PTools::SDF::DBUtil> class uses the following modules.
+See L<PTools::Loader>, 
+used to demand load classes for 'user extendible' methods at run time,
+L<PTools::String>, used to provide the 'prompt' method for data entry,
+and I<WordWrap> (no man page yet), used to wrap prompt text for
+display on a terminal screen.
+
+And also, see L<RPC::PlServer>, L<RPC::PlClient>, L<Net::Daemon>
+and L<Storable> for implementation details of the RPC mechanism 
+used here.
+
+=head1 AUTHOR
+
+Chris Cobb, E<lt>nospamplease@ccobb.netE<gt>
+
+=head1 COPYRIGHT
+
+Copyright (c) 1997-2007 by Chris Cobb. All rights reserved.
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=cut

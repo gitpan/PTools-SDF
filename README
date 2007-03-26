@@ -1,0 +1,82 @@
+PTools-SDF version 0.01
+=======================
+
+PTools-SDF is a collection of 'Simple Data File' classes. 
+
+These Perl5 modules are used to manipulate simple data files (SDF). In
+addition to handling file I/O, these modules are also handy for creating
+simple memory data structures that are familiar to most programmers.
+
+PTools::SDF:: Provide simple methods for simple data files
+
+There are four primary file formats ...
+
+   CSV        'Comma separated' data files
+   INI        MS-Windoze '.INI' format files
+   SDF        Self Defining Files of columnar data
+   TAG        Tagged data field files
+
+... with some variations on these themes ...
+
+   ARRAY      Load array of records  into PTools::SDF::SDF objects
+   DIR        Load Unix directories  into PTools::SDF::SDF objects
+   IDX        Provide user indexing  into PTools::SDF::SDF objects
+
+Some lock modules are designed to work with any class that inherits
+from 'PTools::SDF::File'. In addition, these classes will also work
+successfully to lock any arbitrary file from any arbitrary script.
+
+ PTools::SDF::Lock::  Variations of PTools::SDF::File->lock/unlock methods
+
+   Advisory   Exclusive advisory lock/unlock       (via flock)
+   Selective  Excl or Shared advisory lock/unlock  (via fcntl)
+
+
+These sort modules are designed to only work with classes that
+inherit from the 'PTools::SDF::SDF' module. The other basic 'SDF'
+file types are not in a format that will benefit from sorting.
+
+ PTools::SDF::Sort::  Variations of the PTools::SDF::SDF->sort method
+
+   Random     The quickest, needs no args, for special cases
+   Quick      2nd quickest, but only works with one sort key
+   Shell      3rd quickest, but only works with one sort key
+   Bubble     SLOW w/big files, but allows multiple sort keys
+
+The sort modules all sort equally quickly up to about 100 records.
+Above that, the difference in speed becomes more and more obvious.
+Around 4,000 records, the Bubble sort becomes too slow for most use.
+The Quick sort can easily sort 10,000 records and the Random sorter
+can handle 100,000 records with little noticeable delay.
+
+In addition, a couple of add-on packages contain more SDF tools.
+Look for these on a CPAN near you.
+
+   PTools-SDF-DB        'SDF DBMS' w/remote access to SDF data
+   PTools-SDF-File-Cmd  OO wrappers for system files and commands
+
+
+INSTALLATION
+
+To install this module type the following:
+
+   perl Makefile.PL
+   make
+   make test
+   make install
+
+DEPENDENCIES
+
+This module requires these other modules and libraries:
+
+   none
+
+COPYRIGHT AND LICENCE
+
+Copyright (C) 1997-2007 by Chris Cobb
+
+This library is free software; you can redistribute it and/or modify
+it under the same terms as Perl itself, either Perl version 5.8.8 or,
+at your option, any later version of Perl 5 you may have available.
+
+

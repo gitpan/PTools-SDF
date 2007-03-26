@@ -1,0 +1,182 @@
+=head1 NAME
+
+PTools-SDF README - Introduction to 'Simple Data Files'
+
+=head1 VERSION
+
+This document is not specific to any version of the PTools-SDF modules.
+
+=head1 DESCRIPTION
+
+These Perl5 modules are used to manipulate simple data files (SDF). In 
+addition to handling file I/O, these modules are also handy for creating 
+simple memory data structures that are familiar to most programmers.
+
+The modules were originally designed for use with small data files used 
+in Web applications. They will work with large files. However, in some 
+cases, they may be slower then you might wish. There are some additional 
+notes on performance enhancements, below.
+
+=head2 Introduction
+
+This is a list of available modules. See the documentation within each 
+module for further information and usage. Also see L<PTools::SDF::Overview>
+ for an overview of the PTools-SDF API.
+
+PTools::SDF:: Provide simple methods for simple data files
+
+   File       Base class for PTools::SDF:: modules (abstract class)
+
+There are four primary file formats ...
+
+   CSV        'Comma separated' data files
+   INI        MS-Windoze '.INI' format files
+   SDF        Self Defining Files of columnar data
+   TAG        Tagged data field files
+
+... with some variations on these themes ...
+
+   ARRAY      Load array of records  into PTools::SDF::SDF objects
+   DIR        Load Unix directories  into PTools::SDF::SDF objects
+   IDX        Provide user indexing  into PTools::SDF::SDF objects
+
+... and some modules to implement a 'simple data base' ...
+(contained in the 'PTools-SDF-DB' distribution available on CPAN)
+
+   DB         Parse a simple 'schema' object (Perl data structure)
+   DSET       Parse 'schema snippets' for an PTools::SDF::IDX style object
+   DBPolicy   Apply data 'entry/update' edit policies from 'schema'
+   DBUtil     Generic utility: query/add/update/load via 'schema' def
+   DemoDB     Example implementation of the simple 'schema' class
+
+... and modules to provide remote access to a 'simple data base' ...
+(contained in the 'PTools-SDF-DB' distribution available on CPAN)
+
+   DBClient   Generic abstract class to simplify client setup
+
+ PTools::SDF::RPC::   Provide simple remote access SDF DB server
+
+   DBServer   Generic abstract class to simplify server setup
+
+
+Also see the '.../global/bin/dbutil.pl' front end to DBUtil class
+that provides immediate 'query/add/update/load' functionality for
+any 'simple data base.' This is the definitive how-to for programatic
+access to an SDF DB.
+
+There are several user-definable extensions to existing methods. These
+are designed to resolve performance issues. See more notes, below.
+
+
+=head2 Locking
+
+The lock modules are designed to work with any class that inherits
+from B<PTools::SDF::File>. In addition, these classes will also work 
+successfully to lock any arbitrary file from any arbitrary script.
+
+ PTools::SDF::Lock::  Variations of PTools::SDF::File->lock/unlock methods
+
+   Advisory   Exclusive advisory lock/unlock       (via flock)
+   Selective  Excl or Shared advisory lock/unlock  (via fcntl)
+
+=head2 Sorting
+
+These sort modules are designed to only work with classes that
+inherit from the B<PTools::SDF::SDF> module. The other basic 'SDF'
+file types are not in a format that will benefit from sorting.
+
+ PTools::SDF::Sort::  Variations of the PTools::SDF::SDF->sort method
+
+   Random     The quickest, needs no args, for special cases
+   Quick      2nd quickest, but only works with one sort key
+   Shell      3rd quickest, but only works with one sort key
+   Bubble     SLOW w/big files, but allows multiple sort keys
+
+The sort modules all sort equally quickly up to about 100 records.
+Above that, the difference in speed becomes more and more obvious.
+Around 4,000 records, the Bubble sort becomes too slow for most use.
+The Quick sort can easily sort 10,000 records and the Random sorter
+can handle 100,000 records with little noticeable delay.
+
+=head2 System File Wrappers
+
+In addition, there are modules that wrap specific system files. These
+provide additional methods to allow manipulation of the files.
+
+ PTools::SDF::File::  Classes to wrap specific system files
+
+   AutoHome   Parse ypcat auto.home into an PTools::SDF::SDF object
+   AutoView   Parse ypcat auto.view into an PTools::SDF::SDF object
+   Mnttab     Parse /etc/mnttab to find the mount point for a path
+   Passwd     Parse /etc/passwd (or 'ypcat passwd') for user info
+
+(Contained in the 'PTools-SDF-File-Cmd' distribution available on CPAN.)
+
+=head2 System Command Wrappers
+
+ PTools::SDF::CMD::   Classes to wrap specific system commands
+
+   BDF        Parse /bin/bdf output into an PTools::SDF::SDF object
+
+(Contained in the 'PTools-SDF-File-Cmd' distribution available on CPAN.)
+
+=head2 Performance Notes
+
+These modules were originally designed for use with small data files. 
+Enhancements have been made to address some performance issues.
+
+For example, in the B<PTools::SDF::SDF> module, the default sort object used
+is B<PTools::SDF::Sort::Bubble>. The advantage of this is that it allows an
+arbitrary number of sort keys. Also, with small files of up to
+around 100 records, the sort is as fast as any other. As the file
+size increases, this sort slows dramatically. The Quick sort and
+Shell sort were added as alternatives. These provide dramatic
+performance improvements. Unfortunately, they only allow a single
+sort key. See the B<PTools::SDF::SDF> module for a synopsis. In addition, the
+Quick sort, while by far the fastest, will not 'reverse' sort.
+
+In addition, with the B<PTools::SDF::SDF> module, a 'noparse' option can be
+added when the module is 'used.' This provides a performance boost
+since each field in every record is no longer parsed to see if
+'encoded separator characters' are embedded in the records. The
+field parsing is very handy for small files of user entered data
+when you don't know if a user happens to enter the field separator
+into text. Without encoding these characters, the record would 
+become 'corrupt.' However, when reading and writing large files,
+this field parsing becomes a significant performance issue.
+
+=head1 SEE ALSO
+
+See
+L<PTools::SDF::Overview>, 
+L<PTools::SDF::ARRAY>, L<PTools::SDF::CMD::BDF> L<PTools::SDF::CSV>,
+L<PTools::SDF::DB>,    L<PTools::SDF::DIR>,     L<PTools::SDF::DSET>,
+L<PTools::SDF::File>,  L<PTools::SDF::IDX>,     L<PTools::SDF::INI>,
+L<PTools::SDF::Lock::Advisory>,     L<PTools::SDF::Lock::Selective>,
+L<PTools::SDF::SDF>,
+L<PTools::SDF::Sort::Bubble>, L<PTools::SDF::Sort::Quick>, 
+L<PTools::SDF::Sort::Shell> and L<PTools::SDF::TAG>.
+
+Also see
+L<PTools::SDF::DBClient>, L<PTools::SDF::RPC::DBServer>.
+These are contained in the 'PTools-SDF-DB' distribution
+available on CPAN.
+
+
+Also see
+L<PTools::SDF::File::AutoHome>, L<PTools::SDF::File::AutoView>,
+L<PTools::SDF::File::Mnttab> and L<PTools::SDF::File::Passwd>.
+These are contained in the 'PTools-SDF-File-Cmd' distribution
+available on CPAN.
+
+=head1 AUTHOR
+
+Chris Cobb, E<lt>nospamplease@ccobb.netE<gt>
+
+=head1 COPYRIGHT
+
+Copyright (c) 1997-2007 by Chris Cobb. All rights reserved.
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=cut

@@ -1,0 +1,170 @@
+=head1 NAME
+
+Sort Overview - An overview of the PTools::SDF::Sort:* modules
+
+=head1 VERSION
+
+This document is not specific to any version of the PTools-SDF modules.
+
+=head1 DESCRIPTION
+
+This document is a brief overview of each of the sort classes. Note that
+these will only sort PTools::SDF::SDF objects (and classes that inherit 
+from this).  The data format used is a flat ascii file consting of records 
+containing fields delimited by an arbitrary character (usually a colon 
+':' character).
+
+The classes described below implement various sorting algorithms,
+and which sort class will be used is entirely up to the user of
+these modules.
+
+The sort utilities are a set of PTOols-SDF modules that exist outside 
+of this class hierarchy. These are intentionally not defined within 
+the PTools::SDF::* modules for several reasons:
+
+=over 4
+
+=item *
+
+they provide functionality that is not always needed
+
+=item *
+
+they may be used by different "types" of PTools::SDF::* classes
+(we are only discussing "SDF::SDF type" objects here)
+
+=item *
+
+they are implemented as 'user extendible' as explained next;
+a programmer has the ability to choose which module to use
+at run time, and can alter the selection at any time
+
+=back
+
+
+=head1 SORT UTILITIES
+
+=head2 Select Which Sort via User Extendible Method
+
+The B<sort> method defined in the B<PTools::SDF::SDF> base class is
+'user extendible.' This means that the programmer using these
+modules decides which module (class) will be used to perform
+the sort.
+
+The current list of sort utility modules includes the following.
+The syntax used to 'extend' an object method, which is to say 
+'select the class' that will implement the method, is shown here.
+
+ $sdfObj->extend( "sort", "SDF::Sort::Bubble");   # slow/flexible
+ $sdfObj->extend( "sort", "SDF::Sort::Shell" );   # medium/medium
+ $sdfObj->extend( "sort", "SDF::Sort::Quick" );   # fast/inflexible
+ $sdfObj->extend( "sort", "SDF::Sort::Random");   # fast ramdomizer
+
+B<Note>: Based on which class is specified, the calling parameters
+may vary. See notes here and in the man page for each module.
+
+ $sdfObj->sort( $mode, @sortFieldNames );  # Bubble (multiple keys)
+
+ $sdfObj->sort( $mode, $sortFieldName );   # Shell  (only one key)
+
+ $sdfObj->sort( undef, $sortFieldName );   # Quick  (no mode/one key)
+
+ $sdfObj->sort( undef, undef );            # Random  (no args needed)
+
+The B<$mode> parameter, when allowed, can be any of the following.
+
+ $mode = "reverse"
+ $mode = "ignorecase"
+ $mode = "reverse:ignorecase"
+
+Currently only B<PTools::SDF::SDF> type objects can be sorted (this includes
+any object that inherits from the B<PTools::SDF::SDF> base class, including
+B<PTools::SDF::CSV>, B<PTools::SDF::DIR> and B<PTools::SDF::IDX>, among 
+others. Three sort modules are provided with the basic PTools-SDF package. 
+The tradeoffs in deciding which one to use include functionality vs. speed.
+
+
+=head2 PTools::SDF::Sort::Bubble
+
+This is the default sorting module used when invoking the
+'sort' method on any 'PTools::SDF::SDF type' object. This provides
+the greatest flexibility and the slowest speed. The sort
+can specify multiple sort fields, case insensitivity and
+'forward' or 'reverse' sorting. However, as the number of
+records exceeds about 100 the speed becomes increasingly
+slower. Sorting over about 1,000 records may be too slow
+for a given application to be considered useful.
+
+See L<PTools::SDF::Sort::Bubble>.
+
+
+=head2 PTools::SDF::Sort::Shell
+
+This is a faster alternative to the Bubble Sort algorithm,
+but only one sort key may be used. 'Reverse' and 'case
+insensitive' sorting may still be specified.
+
+See L<PTools::SDF::Sort::Shell>.
+
+
+=head2 PTools::SDF::Sort::Quick
+
+This is one of the fastest sorters included with these tools.
+However, only one sort key may be specified. No other options
+are currently available with this sorter. However, a sort of
+over 10,000 records may cause little or no noticable delay.
+
+See L<PTools::SDF::Sort::Quick>.
+
+
+=head2 PTools::SDF::Sort::Random
+
+This by far the fastest sort mechanism. With this sorter,
+no keys or options are necessary. When using this class a
+sort of around 100,000 records will cause only a brief delay.
+
+See L<PTools::SDF::Sort::Random>.
+
+
+=head2 Custom Utility Extensions
+
+As mentioned above, any programmer may design their own sort and/or
+lock modules to be used with the 'PTools::SDF::*' classes. There is not 
+yet much documentation for the criteria necessary to accomplish this.
+However, comments exist in the following classes that explain it:
+PTools::SDF::File, PTools::SDF::SDF, and each of the sort and lock modules.
+
+Also, there is a PerlTools (PTools) utility module named B<PTools::Extender> 
+that abstracts this functionality for general use when developing Perl 
+modules outside of the PTools::SDF:: suite of classes.
+
+
+=head1 SEE ALSO
+
+See
+L<PTools::SDF::ARRAY>, L<PTools::SDF::CMD::BDF> L<PTools::SDF::CSV>,
+L<PTools::SDF::DB>,    L<PTools::SDF::DIR>,     L<PTools::SDF::DSET>,
+L<PTools::SDF::File>,  L<PTools::SDF::IDX>,     L<PTools::SDF::INI>,
+L<PTools::SDF::Lock::Advisory>,         L<PTools::SDF::Lock::Selective>,
+L<PTools::SDF::SDF>,
+L<PTools::SDF::Sort::Bubble>, 
+L<PTools::SDF::Sort::Quick>, 
+L<PTools::SDF::Sort::Random>, 
+L<PTools::SDF::Sort::Shell>,
+and L<PTools::SDF::TAG>.
+
+Also see L<PTools::Extender> for examples of designing methods that 
+are 'user extendible' at run time.
+
+
+=head1 AUTHOR
+
+Chris Cobb, E<lt>chris@ccobb.netE<gt>
+
+=head1 COPYRIGHT
+
+Copyright (c) 1997-2005 by Chris Cobb. All rights reserved.
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=cut

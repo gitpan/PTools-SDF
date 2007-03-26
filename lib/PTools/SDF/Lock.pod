@@ -1,0 +1,135 @@
+=head1 NAME
+
+Lock Overview - An overview of the PTools::SDF::Lock:* modules
+
+=head1 VERSION
+
+This document is not specific to any version of the PTools-SDF modules.
+
+=head1 DESCRIPTION
+
+This document is a brief overview of each of the lock classes. 
+
+The classes described below implement various locking algorithms,
+and which lock class will be used is entirely up to the user of
+these modules. Note that these will B<not only> lock files associated 
+with any of the PTools::SDF::* objects (and classes that inherit from them), 
+but can be used (with or without using the PTools::SDF::* modules) as general 
+lock utilities on B<any> given data file.
+
+The lock utilities are a set of PTools-SDF modules that exist outside of 
+this class hierarchy. These are intentionally not defined within 
+the PTools::SDF::* modules for several reasons:
+
+=over 4
+
+=item *
+
+they provide functionality that is not always needed
+
+=item *
+
+they may be used by different "types" of PTools::SDF::* classes
+
+=item *
+
+they may be used on any data file, not just PTools::SDF::* files
+
+=item *
+
+they are implemented as 'user extendible' as explained next;
+a programmer has the ability to choose which module to use
+at run time, and can alter the selection at any time
+
+=back
+
+=head1 LOCK UTILITIES
+
+=head2 Select Which Lock via User Extendible Method
+
+The B<lock> method defined in the B<PTools::SDF::File> base class is
+'user extendible.' This means that the programmer using these
+modules decides which module (class) will be used to perform
+the lock.
+
+The current list of lock utility modules includes the following.
+The syntax used to 'extend' an object method, which is to say 
+'select the class' that will implement the method, is shown here.
+
+B<Note>: the syntax below using brackets ("[]") is the
+actual syntax used to pass an array reference to the extend
+method, and not an indication of optional parameters.
+
+ $sdfObj->extend( [ "lock", "unlock" ], "PTools::SDF::Lock::Advisory"  );
+ $sdfObj->extend( [ "lock", "unlock" ], "PTools::SDF::Lock::Selective" );
+
+
+ $sdfObj->lock;
+
+ $sdfObj->unlock;              # or simply exit the script
+
+ if ($sdfObj->lock) {
+     print "Okay ... file is locked.\n";
+ } else {
+     die "Nope ... could not lock file.\n";
+ }
+
+
+=head2 PTools::SDF::Lock::Advisory
+
+This provides simple 'advisory' (file system semaphore)
+locking via B<flock>. Any and all scripts that 'lock' a
+given file must agree to honor an existing 'lock.'
+
+See L<PTools::SDF::Lock::Advisory>.
+
+=head2 PTools::SDF::Lock::Selective
+
+This provides simple 'advisory' (file system semaphore)
+locking via B<fcntl>. Any and all scripts that 'lock' a
+given file must agree to honor an existing 'lock.'
+
+See L<PTools::SDF::Lock::Selective>.
+
+These lock classes are designed to work with any PTools::SDF::*
+type of object. Also, this class will work as a general utility
+for locking any simple data file from within any script. For
+use as a 'lock manager' when not using the 'PTools::SDF::*' modules,
+see additional examples in L<PTools::SDF::Lock::Advisory>.
+
+
+=head2 Custom Utility Extensions
+
+As mentioned above, any programmer may design their own sort and/or
+lock modules to be used with the 'PTools::SDF::*' classes. There is not 
+yet much documentation for the criteria necessary to accomplish this.
+However, comments exist in the following classes that explain it:
+PTools::SDF::File, PTools::SDF::SDF, and each of the sort and lock modules.
+
+Also, there is a PerlTools (PTools) utility module named B<PTools::Extender> 
+that abstracts this functionality for general use when developing Perl 
+modules outside of the PTools::SDF:: suite of classes.
+
+
+=head1 SEE ALSO
+
+See
+L<PTools::SDF::File>, 
+L<PTools::SDF::Lock::Advisory>, L<PTools::SDF::Lock::Selective>,
+and L<PTools::SDF::Sort>.
+
+Also see L<PTools::Extender> for examples of designing methods that 
+are 'user extendible' at run time.
+
+
+=head1 AUTHOR
+
+Chris Cobb, E<lt>nospamplease@ccobb.netE<gt>
+
+=head1 COPYRIGHT
+
+Copyright (c) 1997-2007 by Chris Cobb. All rights reserved.
+This module is free software; you can redistribute it and/or
+modify it under the same terms as Perl itself.
+
+=cut
